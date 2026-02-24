@@ -1,4 +1,4 @@
-
+#!/usr/bin/env python
 from typing import Dict
 import argparse
 import glob
@@ -114,7 +114,7 @@ def main():
   # add convert command
   convert_parser = subparsers.add_parser('convert', help='Convert a graph', description='Convert a graph to binary format')
   convert_parser.set_defaults(func=convert_command)
-  convert_parser.add_argument('converter_path', help='Path to the converter')
+  convert_parser.add_argument('--converter-path', default=utl.DEFAULT_CONVERTER_PATH, help=f'Path to converter executable (default: {utl.DEFAULT_CONVERTER_PATH})')
   convert_parser.add_argument('-a', '--all', action='store_true', help='Download all graphs')
   convert_parser.add_argument('-u', '--undirected', action='store_true', help='Convert to undirected graph')
   convert_parser.add_argument('-y', '--always', action='store_true', help='Always convert the graph')

@@ -1,3 +1,9 @@
 *.mtx
 .venv
+__pycache__/
+_utils/__pycache__/
 *.bin
+build/
+cmake/
+_converter/build/
+_converter/converter
