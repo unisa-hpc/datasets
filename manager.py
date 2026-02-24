@@ -55,6 +55,10 @@ def clean_command(args: argparse.Namespace, graphs: Dict[str, Dict]):
     utl.clean_graph(info['folder'], args.only_installation)
     
 def convert_command(args: argparse.Namespace, graphs: Dict[str, Dict]):
+  try:
+    converter_path = utl.ensure_converter(args.converter_path, force_rebuild=args.update)
+  except ValueError as exc:
+    raise SystemExit(str(exc))
   to_convert = []
   if args.all:
     to_convert = list(graphs.keys())
@@ -65,7 +69,7 @@ def convert_command(args: argparse.Namespace, graphs: Dict[str, Dict]):
     folder = info['folder']
     if args.destination:
       folder = os.path.join(args.destination, name)
-    utl.convert_graph(args.converter_path, folder, args.undirected, args.always)
+    utl.convert_graph(converter_path, folder, args.undirected, args.always)
   
 
 def info_command(args: argparse.Namespace, graphs: Dict[str, Dict]):
@@ -117,6 +121,7 @@ def main():
   convert_parser.add_argument('--converter-path', default=utl.DEFAULT_CONVERTER_PATH, help=f'Path to converter executable (default: {utl.DEFAULT_CONVERTER_PATH})')
   convert_parser.add_argument('-a', '--all', action='store_true', help='Download all graphs')
   convert_parser.add_argument('-u', '--undirected', action='store_true', help='Convert to undirected graph')
+  convert_parser.add_argument('--update', action='store_true', help='Force rebuilding the default converter before conversion')
   convert_parser.add_argument('-y', '--always', action='store_true', help='Always convert the graph')
   convert_parser.add_argument('-d', '--destination', help='Destination folder')
   convert_parser.add_argument('graph', nargs='*', help='graph(s) to download', metavar='GRAPH')

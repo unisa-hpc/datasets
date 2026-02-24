@@ -367,29 +367,74 @@ unisahpc::datasets::formats::CSR<ValueT, IndexT, OffsetT> fromBinary(std::istrea
     throw std::runtime_error("Invalid binary CSR magic");
   }
 
-  uint8_t flags = 0;
-  detail::read_pod(iss, flags);
-  char reserved[7] = {};
-  iss.read(reserved, 7);
+  uint8_t header_tail[8] = {};
+  iss.read(reinterpret_cast<char*>(header_tail), 8);
 
-  uint64_t n_rows_u64 = 0;
+  uint64_t n_rows_field_u64 = 0;
   uint64_t nnz_u64 = 0;
-  detail::read_pod(iss, n_rows_u64);
+  detail::read_pod(iss, n_rows_field_u64);
   detail::read_pod(iss, nnz_u64);
 
   if (!iss.good()) {
     throw std::runtime_error("Failed to read binary CSR dimensions");
   }
 
-  const std::size_t n_rows = detail::checked_non_negative_cast<std::size_t>(n_rows_u64, "binary row count");
+  const std::size_t n_rows_field = detail::checked_non_negative_cast<std::size_t>(n_rows_field_u64, "binary row count");
   const std::size_t nnz = detail::checked_non_negative_cast<std::size_t>(nnz_u64, "binary nnz count");
+  if (nnz > static_cast<std::size_t>(std::numeric_limits<OffsetT>::max())) {
+    throw std::runtime_error("Binary CSR nnz does not fit in target OffsetT");
+  }
 
-  std::vector<OffsetT> row_offsets(n_rows + 1);
+  // CLUTRA writes num_rows as row_ptr size, while this project historically wrote matrix rows.
+  // Infer the payload layout from remaining bytes whenever the stream is seekable.
+  std::size_t row_ptr_size = 0;
+  const std::streampos payload_begin = iss.tellg();
+  if (payload_begin != std::streampos(-1)) {
+    iss.seekg(0, std::ios::end);
+    const std::streampos payload_end = iss.tellg();
+    iss.seekg(payload_begin);
+
+    if (payload_end != std::streampos(-1) && payload_end >= payload_begin) {
+      const auto remaining = static_cast<std::uintmax_t>(payload_end - payload_begin);
+      const auto edge_bytes = static_cast<std::uintmax_t>(nnz) * static_cast<std::uintmax_t>(sizeof(IndexT) + sizeof(ValueT));
+      if (remaining >= edge_bytes) {
+        const auto row_bytes = remaining - edge_bytes;
+        if ((row_bytes % sizeof(OffsetT)) == 0) {
+          const std::size_t candidate_row_ptr_size = static_cast<std::size_t>(row_bytes / sizeof(OffsetT));
+          if (candidate_row_ptr_size == n_rows_field || candidate_row_ptr_size == (n_rows_field + 1)) {
+            row_ptr_size = candidate_row_ptr_size;
+          }
+        }
+      }
+    }
+  }
+
+  // Fallback heuristic for non-seekable streams.
+  if (row_ptr_size == 0) {
+    const bool looks_like_clutra_header = (header_tail[0] == 1);
+    if (looks_like_clutra_header) {
+      row_ptr_size = n_rows_field;
+    } else {
+      if (n_rows_field == std::numeric_limits<std::size_t>::max()) {
+        throw std::runtime_error("Invalid binary CSR row count");
+      }
+      row_ptr_size = n_rows_field + 1;
+    }
+  }
+
+  if (row_ptr_size == 0) {
+    throw std::runtime_error("Invalid binary CSR row pointer size");
+  }
+  if (static_cast<std::uintmax_t>(row_ptr_size - 1) > static_cast<std::uintmax_t>(std::numeric_limits<IndexT>::max())) {
+    throw std::runtime_error("Binary CSR row pointer size does not fit in target IndexT");
+  }
+
+  std::vector<OffsetT> row_offsets(row_ptr_size);
   std::vector<IndexT> column_indices(nnz);
   std::vector<ValueT> values(nnz);
 
   if (!row_offsets.empty()) {
-    iss.read(reinterpret_cast<char*>(row_offsets.data()), static_cast<std::streamsize>((n_rows + 1) * sizeof(OffsetT)));
+    iss.read(reinterpret_cast<char*>(row_offsets.data()), static_cast<std::streamsize>(row_ptr_size * sizeof(OffsetT)));
   }
   if (!column_indices.empty()) {
     iss.read(reinterpret_cast<char*>(column_indices.data()), static_cast<std::streamsize>(nnz * sizeof(IndexT)));
@@ -402,10 +447,37 @@ unisahpc::datasets::formats::CSR<ValueT, IndexT, OffsetT> fromBinary(std::istrea
     throw std::runtime_error("Failed to read binary CSR payload");
   }
 
+  if (row_offsets.empty()) {
+    throw std::runtime_error("Invalid binary CSR payload: missing row offsets");
+  }
+  if (row_offsets[0] != static_cast<OffsetT>(0)) {
+    throw std::runtime_error("Invalid binary CSR payload: row_offsets[0] must be 0");
+  }
+
+  const std::size_t n_rows = row_ptr_size - 1;
+  for (std::size_t row = 0; row < n_rows; ++row) {
+    const OffsetT curr = row_offsets[row];
+    const OffsetT next = row_offsets[row + 1];
+
+    if constexpr (std::is_signed<OffsetT>::value) {
+      if (curr < 0 || next < 0) {
+        throw std::runtime_error("Invalid binary CSR payload: negative row offset");
+      }
+    }
+
+    if (next < curr) {
+      throw std::runtime_error("Invalid binary CSR payload: non-monotonic row offsets");
+    }
+    if (static_cast<std::size_t>(next) > nnz) {
+      throw std::runtime_error("Invalid binary CSR payload: row offset exceeds nnz");
+    }
+  }
+
   if (static_cast<std::size_t>(row_offsets.back()) != nnz) {
     throw std::runtime_error("Invalid binary CSR payload: row offsets and nnz mismatch");
   }
 
+  const uint8_t flags = (row_ptr_size == n_rows_field) ? header_tail[1] : header_tail[0];
   if (properties != nullptr) {
     properties->directed = (flags & detail::binary::directed_mask) != 0;
     properties->weighted = (flags & detail::binary::weighted_mask) != 0;
@@ -435,6 +507,26 @@ void toBinary(const unisahpc::datasets::formats::CSR<ValueT, IndexT, OffsetT>& c
   if (column_indices.size() != nnz || values.size() != nnz) {
     throw std::runtime_error("Invalid CSR column/value size");
   }
+  if (row_offsets.empty()) {
+    throw std::runtime_error("Invalid CSR row offsets content");
+  }
+  if (row_offsets[0] != static_cast<OffsetT>(0)) {
+    throw std::runtime_error("Invalid CSR row offsets content");
+  }
+  for (std::size_t row = 0; row < n_rows; ++row) {
+    const OffsetT curr = row_offsets[row];
+    const OffsetT next = row_offsets[row + 1];
+
+    if constexpr (std::is_signed<OffsetT>::value) {
+      if (curr < 0 || next < 0) {
+        throw std::runtime_error("Invalid CSR row offsets content");
+      }
+    }
+
+    if (next < curr) {
+      throw std::runtime_error("Invalid CSR row offsets content");
+    }
+  }
   if (static_cast<std::size_t>(row_offsets.back()) != nnz) {
     throw std::runtime_error("Invalid CSR row offsets content");
   }
@@ -453,11 +545,17 @@ void toBinary(const unisahpc::datasets::formats::CSR<ValueT, IndexT, OffsetT>& c
     flags |= detail::binary::weighted_mask;
   }
 
+  // CLUTRA-compatible header tail: version (1), flags, reserved16, reserved32.
+  const uint8_t version = 1;
+  const uint16_t reserved16 = 0;
+  const uint32_t reserved32 = 0;
+  detail::write_pod(oss, version);
   detail::write_pod(oss, flags);
-  const char reserved[7] = {0, 0, 0, 0, 0, 0, 0};
-  oss.write(reserved, 7);
+  detail::write_pod(oss, reserved16);
+  detail::write_pod(oss, reserved32);
 
-  const uint64_t n_rows_u64 = detail::checked_non_negative_cast<uint64_t>(n_rows, "row count");
+  // CLUTRA-compatible semantics: store row pointer size, not matrix row count.
+  const uint64_t n_rows_u64 = detail::checked_non_negative_cast<uint64_t>(row_offsets.size(), "row pointer size");
   const uint64_t nnz_u64 = detail::checked_non_negative_cast<uint64_t>(nnz, "nnz count");
   detail::write_pod(oss, n_rows_u64);
   detail::write_pod(oss, nnz_u64);

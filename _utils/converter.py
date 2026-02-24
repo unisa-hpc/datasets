@@ -12,21 +12,44 @@ CONVERTER_SOURCE = os.path.join(os.path.dirname(__file__), 'converter.cpp')
 DEFAULT_CONVERTER_PATH = os.path.join(CONVERTER_DIR, 'converter')
 
 
-def ensure_converter(converter_path: str = DEFAULT_CONVERTER_PATH) -> str:
-  if os.path.exists(converter_path):
-    if not os.access(converter_path, os.X_OK):
-      raise PermissionError(f'Converter exists but is not executable: {converter_path}')
-    return converter_path
+def _converter_dependencies():
+  deps = [CONVERTER_SOURCE]
+  deps.extend(glob.glob(os.path.join(LIBRARY_DIR, 'include', '*.hpp')))
+  return deps
 
+
+def _needs_rebuild(converter_path: str) -> bool:
+  if not os.path.exists(converter_path):
+    return True
+  converter_mtime = os.path.getmtime(converter_path)
+  for dep in _converter_dependencies():
+    if os.path.exists(dep) and os.path.getmtime(dep) > converter_mtime:
+      return True
+  return False
+
+
+def ensure_converter(converter_path: str = DEFAULT_CONVERTER_PATH, force_rebuild: bool = False) -> str:
   if os.path.abspath(converter_path) != os.path.abspath(DEFAULT_CONVERTER_PATH):
+    if force_rebuild:
+      raise ValueError('--update can only be used with the default converter path')
+    if os.path.exists(converter_path):
+      if not os.access(converter_path, os.X_OK):
+        raise PermissionError(f'Converter exists but is not executable: {converter_path}')
+      return converter_path
     raise FileNotFoundError(f'Converter not found at: {converter_path}')
 
   compiler = 'g++'
   if not os.path.exists(CONVERTER_SOURCE):
     raise FileNotFoundError(f'Converter source not found at: {CONVERTER_SOURCE}')
 
+  if (not force_rebuild
+      and os.path.exists(converter_path)
+      and os.access(converter_path, os.X_OK)
+      and not _needs_rebuild(converter_path)):
+    return converter_path
+
   os.makedirs(CONVERTER_DIR, exist_ok=True)
-  print(f'Converter not found at {converter_path}. Building it with {compiler}...')
+  print(f'Building converter at {converter_path} with {compiler}...')
 
   compile_cmd = [
       compiler,
