@@ -8,11 +8,56 @@ It also contains a collection of graph datasets gathered from different public s
 
 ## Repository Structure
 
-- `manager.py`: dataset management CLI (list, download, clean, convert)
-- `_utils/`: Python utilities and C++ converter source (`converter.cpp`)
-- `_converter/`: built converter binary output
+- `manager.py`: dataset management CLI (list, download, clean, convert, transform)
+- `_utils/`: Python utilities and C++ tools (`converter.cpp`, `transformer.cpp`)
+- `_converter/`: built converter/transformer executable outputs
 - `library/`: CSR/MatrixMarket parsing and binary I/O headers
 - `<dataset-name>/`: dataset folders with `info.yaml`, `.mtx`, and `.bin`
+
+## Transformation
+
+Transform one dataset (`.mtx` -> `.transformed.mtx`):
+
+```bash
+python manager.py transform -y <dataset-name>
+```
+
+Typo-compatible alias:
+
+```bash
+python manager.py trasform -y <dataset-name>
+```
+
+Force rebuild of the transformer before processing:
+
+```bash
+python manager.py transform --update -y <dataset-name>
+```
+
+Transform all datasets:
+
+```bash
+python manager.py transform -a -y
+```
+
+Choose one or more transformations (ordered pipeline):
+
+```bash
+python manager.py transform --transformations sort -y <dataset-name>
+python manager.py transform --transformations symmetrize -y <dataset-name>
+python manager.py transform --transformations symmetrize sort -y <dataset-name>
+```
+
+The transformer writes `<basename>.transformed.mtx`.
+- `sort`: only sorts edges by `(row, col)` ids.
+- `symmetrize`: only symmetrizes to undirected form and deduplicates edge pairs.
+- Default pipeline: `symmetrize sort`.
+
+Backward-compatible single-operation alias:
+
+```bash
+python manager.py transform --operation both -y <dataset-name>
+```
 
 ## Conversion
 

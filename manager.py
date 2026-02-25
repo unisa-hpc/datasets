@@ -77,6 +77,28 @@ def convert_command(args: argparse.Namespace, graphs: Dict[str, Dict]):
     if args.destination:
       folder = os.path.join(args.destination, name)
     utl.convert_graph(converter_path, folder, args.undirected, args.always)
+
+def transform_command(args: argparse.Namespace, graphs: Dict[str, Dict]):
+  try:
+    transformer_path = utl.ensure_transformer(args.transformer_path, force_rebuild=args.update)
+  except ValueError as exc:
+    raise SystemExit(str(exc))
+
+  transformations = args.transformations
+  if args.operation is not None:
+    transformations = [args.operation]
+
+  to_transform = []
+  if args.all:
+    to_transform = list(graphs.keys())
+  else:
+    to_transform = args.graph
+  for name in to_transform:
+    info = graphs[name]
+    folder = info['folder']
+    if args.destination:
+      folder = os.path.join(args.destination, name)
+    utl.transform_graph(transformer_path, folder, transformations, args.always)
   
 def move_command(args: argparse.Namespace, graphs: Dict[str, Dict]):
   to_move = []
@@ -144,6 +166,18 @@ def main():
   convert_parser.add_argument('-y', '--always', action='store_true', help='Always convert the graph')
   convert_parser.add_argument('-d', '--destination', help='Destination folder')
   convert_parser.add_argument('graph', nargs='*', help='graph(s) to download', metavar='GRAPH')
+
+  # add transform command
+  transform_parser = subparsers.add_parser('transform', help='Transform a graph', description='Transform a graph Matrix Market file with a transformation pipeline')
+  transform_parser.set_defaults(func=transform_command)
+  transform_parser.add_argument('--transformer-path', default=utl.DEFAULT_TRANSFORMER_PATH, help=f'Path to transformer executable (default: {utl.DEFAULT_TRANSFORMER_PATH})')
+  transform_parser.add_argument('-t', '--transformations', nargs='+', default=['symmetrize', 'sort'], metavar='TRANSFORM', help='Ordered transformation pipeline (default: symmetrize sort)')
+  transform_parser.add_argument('-o', '--operation', choices=['sort', 'symmetrize', 'both'], help='Backward-compatible single transformation alias (overrides --transformations)')
+  transform_parser.add_argument('-a', '--all', action='store_true', help='Transform all graphs')
+  transform_parser.add_argument('--update', action='store_true', help='Force rebuilding the default transformer before transformation')
+  transform_parser.add_argument('-y', '--always', action='store_true', help='Always transform the graph')
+  transform_parser.add_argument('-d', '--destination', help='Destination folder')
+  transform_parser.add_argument('graph', nargs='*', help='graph(s) to transform', metavar='GRAPH')
 
   # add move command
   move_parser = subparsers.add_parser('move', help='Move downloaded graph files', description='Move .mtx/.bin files for one or more graphs')
