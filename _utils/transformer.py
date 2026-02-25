@@ -7,9 +7,9 @@ import subprocess
 
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 LIBRARY_DIR = os.path.join(REPO_ROOT, 'library')
-CONVERTER_DIR = os.path.join(REPO_ROOT, '_converter')
-TRANSFORMER_SOURCE = os.path.join(os.path.dirname(__file__), 'transformer.cpp')
-DEFAULT_TRANSFORMER_PATH = os.path.join(CONVERTER_DIR, 'transformer')
+CONVERTER_DIR = os.path.join(REPO_ROOT, '_tools')
+TRANSFORMER_SOURCE = os.path.join(CONVERTER_DIR, 'transformer.cpp')
+DEFAULT_TRANSFORMER_PATH = os.path.join(CONVERTER_DIR, 'transformer.out')
 
 
 def _transformer_dependencies():

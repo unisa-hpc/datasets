@@ -7,9 +7,9 @@ import subprocess
 
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 LIBRARY_DIR = os.path.join(REPO_ROOT, 'library')
-CONVERTER_DIR = os.path.join(REPO_ROOT, '_converter')
-CONVERTER_SOURCE = os.path.join(os.path.dirname(__file__), 'converter.cpp')
-DEFAULT_CONVERTER_PATH = os.path.join(CONVERTER_DIR, 'converter')
+CONVERTER_DIR = os.path.join(REPO_ROOT, '_tools')
+CONVERTER_SOURCE = os.path.join(CONVERTER_DIR, 'converter.cpp')
+DEFAULT_CONVERTER_PATH = os.path.join(CONVERTER_DIR, 'converter.out')
 
 
 def _converter_dependencies():
