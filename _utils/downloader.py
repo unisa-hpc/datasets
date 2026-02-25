@@ -36,6 +36,22 @@ def _select_member_by_name(member_names, target_filename):
   return None
 
 
+def _confirm_download(target_path: str, always_yes: bool, always_no: bool) -> bool:
+  if not os.path.exists(target_path):
+    return True
+  if always_yes:
+    return True
+  if always_no:
+    return False
+  while True:
+    answer = input(f'{target_path} already exists. Download again and overwrite? [y/n]: ').strip().lower()
+    if answer in ('y', 'yes'):
+      return True
+    if answer in ('n', 'no'):
+      return False
+    print('Please answer with y or n.')
+
+
 def _extract_target_from_zip(archive_path, extract_to, target_filename):
   with zipfile.ZipFile(archive_path, 'r') as zip_ref:
     member_names = [m for m in zip_ref.namelist() if not m.endswith('/')]
@@ -65,10 +81,17 @@ def _extract_target_from_tar(archive_path, extract_to, target_filename):
       target.write(source.read())
 
 
-def download_and_extract(name, url, download_dir='.', extract_to='.'):
+def download_and_extract(name, url, download_dir='.', extract_to='.', always_yes: bool = False, always_no: bool = False):
   try:
     # Ensure download directory exists.
     os.makedirs(download_dir, exist_ok=True)
+    os.makedirs(extract_to, exist_ok=True)
+    target_filename = f'{name}.mtx'
+    target_path = os.path.join(extract_to, target_filename)
+
+    if not _confirm_download(target_path, always_yes, always_no):
+      print(f'Skipped download for {name}')
+      return
 
     # Step 1: Download the file.
     response = requests.get(url, stream=True)
@@ -96,8 +119,6 @@ def download_and_extract(name, url, download_dir='.', extract_to='.'):
     os.rename(temp_file_path, file_path)
 
     # Step 4: Extract only the desired MatrixMarket file.
-    os.makedirs(extract_to, exist_ok=True)
-    target_filename = f'{name}.mtx'
 
     if file_extension == '.zip':
       _extract_target_from_zip(file_path, extract_to, target_filename)

@@ -42,7 +42,14 @@ def download_command(args: argparse.Namespace, graphs: Dict[str, Dict]):
     if args.destination:
       folder = os.path.join(args.destination, name)
 
-    utl.download_and_extract(name, info['url'], folder, folder)
+    utl.download_and_extract(
+        name,
+        info['url'],
+        folder,
+        folder,
+        always_yes=args.yes,
+        always_no=args.no,
+    )
 
 def clean_command(args: argparse.Namespace, graphs: Dict[str, Dict]):
   to_clean = []
@@ -70,6 +77,15 @@ def convert_command(args: argparse.Namespace, graphs: Dict[str, Dict]):
     if args.destination:
       folder = os.path.join(args.destination, name)
     utl.convert_graph(converter_path, folder, args.undirected, args.always)
+  
+def move_command(args: argparse.Namespace, graphs: Dict[str, Dict]):
+  to_move = []
+  if args.all:
+    to_move = list(graphs.keys())
+  else:
+    to_move = args.graph
+  for name in to_move:
+    utl.move_graph_files(name, source_root=args.source, destination_root=args.destination)
   
 
 def info_command(args: argparse.Namespace, graphs: Dict[str, Dict]):
@@ -100,6 +116,9 @@ def main():
   download_parser.add_argument('-a', '--all', action='store_true', help='Download all graphs')
   download_parser.add_argument('graph', nargs='*', help='graph(s) to download', metavar='GRAPH')
   download_parser.add_argument('-d', '--destination', help='Destination folder')
+  download_behavior_group = download_parser.add_mutually_exclusive_group()
+  download_behavior_group.add_argument('-y', '--yes', action='store_true', help='Always overwrite existing downloaded files')
+  download_behavior_group.add_argument('-N', '--no', action='store_true', help='Never overwrite existing downloaded files')
 
   # add info command
   info_parser = subparsers.add_parser('info', help='Get info of a graph', description='Get info of a graph')
@@ -125,6 +144,14 @@ def main():
   convert_parser.add_argument('-y', '--always', action='store_true', help='Always convert the graph')
   convert_parser.add_argument('-d', '--destination', help='Destination folder')
   convert_parser.add_argument('graph', nargs='*', help='graph(s) to download', metavar='GRAPH')
+
+  # add move command
+  move_parser = subparsers.add_parser('move', help='Move downloaded graph files', description='Move .mtx/.bin files for one or more graphs')
+  move_parser.set_defaults(func=move_command)
+  move_parser.add_argument('-a', '--all', action='store_true', help='Move all graphs')
+  move_parser.add_argument('-s', '--source', default='.', help='Source root folder (default: current working directory)')
+  move_parser.add_argument('-d', '--destination', required=True, help='Destination root folder')
+  move_parser.add_argument('graph', nargs='*', help='graph(s) to move', metavar='GRAPH')
   
   # parse arguments
   args = parser.parse_args()
