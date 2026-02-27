@@ -5,6 +5,8 @@ import glob
 import os
 import subprocess
 
+from _utils.errors import TransformError
+
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 LIBRARY_DIR = os.path.join(REPO_ROOT, 'library')
 CONVERTER_DIR = os.path.join(REPO_ROOT, '_tools')
@@ -87,25 +89,32 @@ def _normalize_transformations(transformations):
 
 
 def transform_graph(transformer_path, folder, transformations=None, always: bool = False):
-  transformer_path = ensure_transformer(transformer_path)
-  transformations = _normalize_transformations(transformations)
+  graph_name = os.path.basename(os.path.normpath(folder))
+  try:
+    transformer_path = ensure_transformer(transformer_path)
+    transformations = _normalize_transformations(transformations)
 
-  candidates = sorted(
-      path for path in glob.glob(f'{folder}/*.mtx')
-      if not path.endswith('.transformed.mtx'))
-  if not candidates:
-    return
-
-  mtx = candidates[0]
-  basename = os.path.splitext(os.path.basename(mtx))[0]
-  transformed_file = f'{folder}/{basename}.transformed.mtx'
-
-  if os.path.exists(transformed_file) and not always:
-    if input(f'{os.path.basename(transformed_file)} already exists. Do you want to transform again? [y/n]: ').lower() != 'y':
+    candidates = sorted(
+        path for path in glob.glob(f'{folder}/*.mtx')
+        if not path.endswith('.transformed.mtx'))
+    if not candidates:
+      print(f'Warning: no .mtx file found in {folder}')
       return
 
-  print(f'Transforming {basename} ({", ".join(transformations)})')
-  args = [transformer_path, mtx, transformed_file]
-  for transformation in transformations:
-    args.extend(['--operation', transformation])
-  subprocess.run(args, check=True)
+    mtx = candidates[0]
+    basename = os.path.splitext(os.path.basename(mtx))[0]
+    transformed_file = f'{folder}/{basename}.transformed.mtx'
+
+    if os.path.exists(transformed_file) and not always:
+      if input(f'{os.path.basename(transformed_file)} already exists. Do you want to transform again? [y/n]: ').lower() != 'y':
+        return
+
+    print(f'Transforming {basename} ({", ".join(transformations)})')
+    args = [transformer_path, mtx, transformed_file]
+    for transformation in transformations:
+      args.extend(['--operation', transformation])
+    subprocess.run(args, check=True)
+  except subprocess.CalledProcessError as exc:
+    raise TransformError(f'Transformer process failed with exit code {exc.returncode}', graph=graph_name) from exc
+  except (FileNotFoundError, PermissionError, OSError, RuntimeError, ValueError) as exc:
+    raise TransformError(str(exc), graph=graph_name) from exc

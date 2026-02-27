@@ -5,6 +5,8 @@ import os
 import glob
 import subprocess
 
+from _utils.errors import ConvertError
+
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 LIBRARY_DIR = os.path.join(REPO_ROOT, 'library')
 CONVERTER_DIR = os.path.join(REPO_ROOT, '_tools')
@@ -70,21 +72,28 @@ def ensure_converter(converter_path: str = DEFAULT_CONVERTER_PATH, force_rebuild
 
 
 def convert_graph(converter_path, folder, undirected: bool, always: bool = False):
-  converter_path = ensure_converter(converter_path)
-  if not (lst := glob.glob(f'{folder}/*.mtx')):
-    return
-  mtx = lst[0]
-  basename = os.path.basename(mtx).split('.')[0]
-  bin_file = f'{folder}/{basename}.bin'
+  graph_name = os.path.basename(os.path.normpath(folder))
+  try:
+    converter_path = ensure_converter(converter_path)
+    if not (lst := glob.glob(f'{folder}/*.mtx')):
+      print(f'Warning: no .mtx file found in {folder}')
+      return
+    mtx = lst[0]
+    basename = os.path.basename(mtx).split('.')[0]
+    bin_file = f'{folder}/{basename}.bin'
 
-  args = [converter_path, mtx, bin_file]
-  if undirected:
-    args.append('-u')
-  
-  if os.path.exists(bin_file) and not always:
-    # ask user if they want to convert again
-    if input(f'{basename} already converted. Do you want to convert again? [y/n]: ').lower() != 'y':
-      return    
-  
-  print(f'Converting {basename}')
-  subprocess.run(args, check=True)
+    args = [converter_path, mtx, bin_file]
+    if undirected:
+      args.append('-u')
+    
+    if os.path.exists(bin_file) and not always:
+      # ask user if they want to convert again
+      if input(f'{basename} already converted. Do you want to convert again? [y/n]: ').lower() != 'y':
+        return
+    
+    print(f'Converting {basename}')
+    subprocess.run(args, check=True)
+  except subprocess.CalledProcessError as exc:
+    raise ConvertError(f'Converter process failed with exit code {exc.returncode}', graph=graph_name) from exc
+  except (FileNotFoundError, PermissionError, OSError, RuntimeError, ValueError) as exc:
+    raise ConvertError(str(exc), graph=graph_name) from exc

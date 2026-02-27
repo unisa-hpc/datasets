@@ -12,3 +12,9 @@ from _utils.transformer import DEFAULT_TRANSFORMER_PATH
 from _utils.transformer import ensure_transformer
 from _utils.transformer import transform_graph
 from _utils.mover import move_graph_files
+from _utils.errors import DatasetOperationError
+from _utils.errors import DownloadError
+from _utils.errors import CleanError
+from _utils.errors import ConvertError
+from _utils.errors import TransformError
+from _utils.errors import MoveError

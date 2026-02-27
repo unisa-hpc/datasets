@@ -9,6 +9,8 @@ import zipfile
 import gdown
 import requests
 
+from _utils.errors import DownloadError
+
 
 def check_disk_space(directory, required_space):
   """Check if there's enough space on the drive."""
@@ -82,6 +84,8 @@ def _extract_target_from_tar(archive_path, extract_to, target_filename):
 
 
 def download_and_extract(name, url, download_dir='.', extract_to='.', always_yes: bool = False, always_no: bool = False):
+  temp_file_path = os.path.join(download_dir, f'{name}_temp')
+  file_path = None
   try:
     # Ensure download directory exists.
     os.makedirs(download_dir, exist_ok=True)
@@ -101,8 +105,9 @@ def download_and_extract(name, url, download_dir='.', extract_to='.', always_yes
     if not check_disk_space(download_dir, total_size):
       raise OSError('Not enough space in the specified download directory.')
 
-    temp_file_path = os.path.join(download_dir, f'{name}_temp')
-    gdown.download(url, temp_file_path, quiet=False)
+    downloaded_file = gdown.download(url, temp_file_path, quiet=False)
+    if downloaded_file is None or not os.path.exists(temp_file_path):
+      raise DownloadError(f'Failed to download archive for "{name}" from "{url}"', graph=name)
 
     # Step 2: Determine the file type.
     with open(temp_file_path, 'rb') as file:
@@ -116,7 +121,7 @@ def download_and_extract(name, url, download_dir='.', extract_to='.', always_yes
 
     # Step 3: Rename the temporary file with the correct extension.
     file_path = os.path.join(download_dir, f'{name}{file_extension}')
-    os.rename(temp_file_path, file_path)
+    os.replace(temp_file_path, file_path)
 
     # Step 4: Extract only the desired MatrixMarket file.
 
@@ -125,14 +130,18 @@ def download_and_extract(name, url, download_dir='.', extract_to='.', always_yes
     else:
       _extract_target_from_tar(file_path, extract_to, target_filename)
 
-    # Step 5: Clean up the downloaded archive file.
-    os.remove(file_path)
-
-  except requests.exceptions.RequestException as e:
-    print(f'An error occurred while downloading the file: {e}')
-  except (zipfile.BadZipFile, tarfile.TarError) as e:
-    print(f'An error occurred while extracting the file: {e}')
-  except (ValueError, FileNotFoundError) as e:
-    print(e)
-  except OSError as e:
-    print(f'Error with disk space or directory: {e}')
+  except requests.exceptions.RequestException as exc:
+    raise DownloadError(f'Failed to download "{name}" from "{url}": {exc}', graph=name) from exc
+  except (zipfile.BadZipFile, tarfile.TarError) as exc:
+    raise DownloadError(f'Invalid archive while extracting "{name}": {exc}', graph=name) from exc
+  except (ValueError, FileNotFoundError) as exc:
+    raise DownloadError(str(exc), graph=name) from exc
+  except OSError as exc:
+    raise DownloadError(f'Filesystem error while downloading "{name}": {exc}', graph=name) from exc
+  finally:
+    for path in (temp_file_path, file_path):
+      if path and os.path.exists(path):
+        try:
+          os.remove(path)
+        except OSError:
+          pass
