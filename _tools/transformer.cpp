@@ -19,7 +19,7 @@ namespace {
 
 void printUsage(const char* prog) {
   std::cerr << "Usage: " << prog
-            << " <input.mtx> <output.mtx> [--operation|-o <sort|symmetrize|both>]..."
+            << " <input.mtx> <output.mtx> [--transformations|-t <sort|symmetrize>...]"
             << std::endl;
 }
 
@@ -35,11 +35,6 @@ bool parseOperation(const std::string& value, std::vector<TransformOperation>& o
   }
   if (value == "symmetrize") {
     operations.push_back(TransformOperation::symmetrize);
-    return true;
-  }
-  if (value == "both") {
-    operations.push_back(TransformOperation::symmetrize);
-    operations.push_back(TransformOperation::sort);
     return true;
   }
   return false;
@@ -176,17 +171,19 @@ int main(int argc, char** argv) {
 
   for (int arg_idx = 3; arg_idx < argc; ++arg_idx) {
     const std::string arg = argv[arg_idx];
-    if (arg == "-o" || arg == "--operation") {
-      if ((arg_idx + 1) >= argc) {
+    if (arg == "-t" || arg == "--transformations") {
+      if ((arg_idx + 1) >= argc || argv[arg_idx + 1][0] == '-') {
         std::cerr << "Error: missing value for " << arg << std::endl;
         printUsage(argv[0]);
         return 1;
       }
-      const std::string value = argv[++arg_idx];
-      if (!parseOperation(value, operations)) {
-        std::cerr << "Error: invalid operation '" << value << "'" << std::endl;
-        printUsage(argv[0]);
-        return 1;
+      while ((arg_idx + 1) < argc && argv[arg_idx + 1][0] != '-') {
+        const std::string value = argv[++arg_idx];
+        if (!parseOperation(value, operations)) {
+          std::cerr << "Error: invalid transformation '" << value << "'" << std::endl;
+          printUsage(argv[0]);
+          return 1;
+        }
       }
       continue;
     }

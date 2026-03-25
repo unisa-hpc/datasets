@@ -152,9 +152,6 @@ def _requests_binary_output(transformations) -> bool:
 
 def transform_command(args: argparse.Namespace, graphs: Dict[str, Dict]):
   transformations = args.transformations
-  if args.operation is not None:
-    print('Warning: --operation is deprecated; use --transformations instead.', file=sys.stderr)
-    transformations = [args.operation]
 
   try:
     transformer_path = utl.ensure_transformer(args.transformer_path, force_rebuild=args.update)
@@ -258,7 +255,6 @@ def main() -> int:
   transform_parser.add_argument('--transformer-path', default=utl.DEFAULT_TRANSFORMER_PATH, help=f'Path to transformer executable (default: {utl.DEFAULT_TRANSFORMER_PATH})')
   transform_parser.add_argument('--converter-path', default=utl.DEFAULT_CONVERTER_PATH, help=f'Path to converter executable used by the binary stage (default: {utl.DEFAULT_CONVERTER_PATH})')
   transform_parser.add_argument('-t', '--transformations', nargs='+', default=['symmetrize', 'sort'], metavar='TRANSFORM', help='Ordered transformation pipeline (available: symmetrize sort binary; default: symmetrize sort)')
-  transform_parser.add_argument('-o', '--operation', choices=['sort', 'symmetrize', 'both'], help='Deprecated single-transformation alias (overrides --transformations)')
   transform_parser.add_argument('-a', '--all', action='store_true', help='Transform all graphs')
   transform_parser.add_argument('--update', action='store_true', help='Force rebuilding the default transformer and, if needed, converter before transformation')
   transform_parser.add_argument('-y', '--always', action='store_true', help='Always transform the graph')

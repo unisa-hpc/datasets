@@ -84,9 +84,6 @@ def _normalize_transformations(transformations):
   normalized = []
   binary_requested = False
   for transformation in transformations:
-    if transformation == 'both':
-      normalized.extend(['symmetrize', 'sort'])
-      continue
     if transformation in MATRIX_TRANSFORMATIONS:
       normalized.append(transformation)
       continue
@@ -153,8 +150,7 @@ def transform_graph(
     if matrix_transformations:
       print(f'Transforming {basename} ({", ".join(transformations)})')
       args = [transformer_path, mtx, transformed_file]
-      for transformation in matrix_transformations:
-        args.extend(['--operation', transformation])
+      args.extend(['--transformations', *matrix_transformations])
       subprocess.run(args, check=True)
     else:
       print(f'Preparing {basename} for binary conversion')

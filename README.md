@@ -63,14 +63,6 @@ python manager.py transform --transformations symmetrize sort binary --discard-t
 
 The binary stage uses the converter executable and can be customized with `--converter-path`.
 
-Deprecated single-operation alias:
-
-```bash
-python manager.py transform --operation both -y <dataset-name>
-```
-
-`--operation` only supports `sort`, `symmetrize`, and `both`. Use `--transformations` for `binary`.
-
 ## Conversion
 
 Convert one dataset:
