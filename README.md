@@ -46,18 +46,30 @@ Choose one or more transformations (ordered pipeline):
 python manager.py transform --transformations sort -y <dataset-name>
 python manager.py transform --transformations symmetrize -y <dataset-name>
 python manager.py transform --transformations symmetrize sort -y <dataset-name>
+python manager.py transform --transformations symmetrize sort binary -y <dataset-name>
 ```
 
 The transformer writes `<basename>.transformed.mtx`.
 - `sort`: only sorts edges by `(row, col)` ids.
 - `symmetrize`: only symmetrizes to undirected form and deduplicates edge pairs.
+- `binary`: converts the transformed Matrix Market file to `<basename>.transformed.bin`.
 - Default pipeline: `symmetrize sort`.
 
-Backward-compatible single-operation alias:
+When `binary` is requested, the transformed `.mtx` is kept by default. To discard it after a successful conversion:
+
+```bash
+python manager.py transform --transformations symmetrize sort binary --discard-transformed -y <dataset-name>
+```
+
+The binary stage uses the converter executable and can be customized with `--converter-path`.
+
+Deprecated single-operation alias:
 
 ```bash
 python manager.py transform --operation both -y <dataset-name>
 ```
+
+`--operation` only supports `sort`, `symmetrize`, and `both`. Use `--transformations` for `binary`.
 
 ## Conversion
 

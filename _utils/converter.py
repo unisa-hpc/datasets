@@ -71,29 +71,59 @@ def ensure_converter(converter_path: str = DEFAULT_CONVERTER_PATH, force_rebuild
   return converter_path
 
 
-def convert_graph(converter_path, folder, undirected: bool, always: bool = False):
-  graph_name = os.path.basename(os.path.normpath(folder))
+def convert_matrix_market(
+    converter_path,
+    input_path,
+    output_path,
+    undirected: bool,
+    always: bool = False,
+    *,
+    graph_name: str = None,
+    label: str = None,
+):
+  if graph_name is None:
+    graph_name = os.path.basename(os.path.dirname(os.path.abspath(input_path)))
+  if label is None:
+    label = os.path.splitext(os.path.basename(input_path))[0]
+  if converter_path is None:
+    converter_path = DEFAULT_CONVERTER_PATH
+
   try:
     converter_path = ensure_converter(converter_path)
-    if not (lst := glob.glob(f'{folder}/*.mtx')):
-      print(f'Warning: no .mtx file found in {folder}')
-      return
-    mtx = lst[0]
-    basename = os.path.basename(mtx).split('.')[0]
-    bin_file = f'{folder}/{basename}.bin'
+    if not os.path.exists(input_path):
+      raise FileNotFoundError(f'Matrix Market file not found at: {input_path}')
 
-    args = [converter_path, mtx, bin_file]
+    args = [converter_path, input_path, output_path]
     if undirected:
       args.append('-u')
-    
-    if os.path.exists(bin_file) and not always:
-      # ask user if they want to convert again
-      if input(f'{basename} already converted. Do you want to convert again? [y/n]: ').lower() != 'y':
+
+    if os.path.exists(output_path) and not always:
+      if input(f'{os.path.basename(output_path)} already exists. Do you want to convert again? [y/n]: ').lower() != 'y':
         return
-    
-    print(f'Converting {basename}')
+
+    print(f'Converting {label}')
     subprocess.run(args, check=True)
   except subprocess.CalledProcessError as exc:
     raise ConvertError(f'Converter process failed with exit code {exc.returncode}', graph=graph_name) from exc
   except (FileNotFoundError, PermissionError, OSError, RuntimeError, ValueError) as exc:
     raise ConvertError(str(exc), graph=graph_name) from exc
+
+
+def convert_graph(converter_path, folder, undirected: bool, always: bool = False):
+  graph_name = os.path.basename(os.path.normpath(folder))
+  if not (lst := glob.glob(f'{folder}/*.mtx')):
+    print(f'Warning: no .mtx file found in {folder}')
+    return
+
+  mtx = lst[0]
+  basename = os.path.basename(mtx).split('.')[0]
+  bin_file = f'{folder}/{basename}.bin'
+  convert_matrix_market(
+      converter_path,
+      mtx,
+      bin_file,
+      undirected,
+      always,
+      graph_name=graph_name,
+      label=basename,
+  )

@@ -3,8 +3,10 @@
 
 import glob
 import os
+import shutil
 import subprocess
 
+from _utils.converter import convert_matrix_market
 from _utils.errors import TransformError
 
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
@@ -12,6 +14,8 @@ LIBRARY_DIR = os.path.join(REPO_ROOT, 'library')
 CONVERTER_DIR = os.path.join(REPO_ROOT, '_tools')
 TRANSFORMER_SOURCE = os.path.join(CONVERTER_DIR, 'transformer.cpp')
 DEFAULT_TRANSFORMER_PATH = os.path.join(CONVERTER_DIR, 'transformer.out')
+MATRIX_TRANSFORMATIONS = {'sort', 'symmetrize'}
+SPECIAL_TRANSFORMATIONS = {'binary'}
 
 
 def _transformer_dependencies():
@@ -78,21 +82,50 @@ def _normalize_transformations(transformations):
     transformations = [transformations]
 
   normalized = []
+  binary_requested = False
   for transformation in transformations:
     if transformation == 'both':
       normalized.extend(['symmetrize', 'sort'])
-    else:
+      continue
+    if transformation in MATRIX_TRANSFORMATIONS:
       normalized.append(transformation)
+      continue
+    if transformation in SPECIAL_TRANSFORMATIONS:
+      binary_requested = True
+      continue
+    raise ValueError(f'Unsupported transformation: {transformation}')
+  if binary_requested:
+    normalized.append('binary')
   if not normalized:
     raise ValueError('At least one transformation must be provided')
   return normalized
 
 
-def transform_graph(transformer_path, folder, transformations=None, always: bool = False):
+def _split_transformations(transformations):
+  matrix_transformations = []
+  binary_requested = False
+  for transformation in transformations:
+    if transformation == 'binary':
+      binary_requested = True
+      continue
+    matrix_transformations.append(transformation)
+  return matrix_transformations, binary_requested
+
+
+def transform_graph(
+    transformer_path,
+    folder,
+    transformations=None,
+    always: bool = False,
+    *,
+    converter_path=None,
+    keep_transformed: bool = True,
+):
   graph_name = os.path.basename(os.path.normpath(folder))
   try:
     transformer_path = ensure_transformer(transformer_path)
     transformations = _normalize_transformations(transformations)
+    matrix_transformations, binary_requested = _split_transformations(transformations)
 
     candidates = sorted(
         path for path in glob.glob(f'{folder}/*.mtx')
@@ -104,16 +137,41 @@ def transform_graph(transformer_path, folder, transformations=None, always: bool
     mtx = candidates[0]
     basename = os.path.splitext(os.path.basename(mtx))[0]
     transformed_file = f'{folder}/{basename}.transformed.mtx'
+    transformed_bin_file = f'{folder}/{basename}.transformed.bin'
 
-    if os.path.exists(transformed_file) and not always:
-      if input(f'{os.path.basename(transformed_file)} already exists. Do you want to transform again? [y/n]: ').lower() != 'y':
+    existing_outputs = []
+    if os.path.exists(transformed_file):
+      existing_outputs.append(os.path.basename(transformed_file))
+    if binary_requested and os.path.exists(transformed_bin_file):
+      existing_outputs.append(os.path.basename(transformed_bin_file))
+
+    if existing_outputs and not always:
+      verb = 'exists' if len(existing_outputs) == 1 else 'exist'
+      if input(f'{", ".join(existing_outputs)} already {verb}. Do you want to transform again? [y/n]: ').lower() != 'y':
         return
 
-    print(f'Transforming {basename} ({", ".join(transformations)})')
-    args = [transformer_path, mtx, transformed_file]
-    for transformation in transformations:
-      args.extend(['--operation', transformation])
-    subprocess.run(args, check=True)
+    if matrix_transformations:
+      print(f'Transforming {basename} ({", ".join(transformations)})')
+      args = [transformer_path, mtx, transformed_file]
+      for transformation in matrix_transformations:
+        args.extend(['--operation', transformation])
+      subprocess.run(args, check=True)
+    else:
+      print(f'Preparing {basename} for binary conversion')
+      shutil.copyfile(mtx, transformed_file)
+
+    if binary_requested:
+      convert_matrix_market(
+          converter_path,
+          transformed_file,
+          transformed_bin_file,
+          False,
+          True,
+          graph_name=graph_name,
+          label=f'{basename}.transformed',
+      )
+      if not keep_transformed:
+        os.remove(transformed_file)
   except subprocess.CalledProcessError as exc:
     raise TransformError(f'Transformer process failed with exit code {exc.returncode}', graph=graph_name) from exc
   except (FileNotFoundError, PermissionError, OSError, RuntimeError, ValueError) as exc:

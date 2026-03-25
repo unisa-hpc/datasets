@@ -142,15 +142,27 @@ def convert_command(args: argparse.Namespace, graphs: Dict[str, Dict]):
   _run_graph_operation(args, graphs, 'convert', to_convert, _convert)
 
 
-def transform_command(args: argparse.Namespace, graphs: Dict[str, Dict]):
-  try:
-    transformer_path = utl.ensure_transformer(args.transformer_path, force_rebuild=args.update)
-  except Exception as exc:
-    raise utl.TransformError(str(exc)) from exc
+def _requests_binary_output(transformations) -> bool:
+  if transformations is None:
+    return False
+  if isinstance(transformations, str):
+    transformations = [transformations]
+  return 'binary' in transformations
 
+
+def transform_command(args: argparse.Namespace, graphs: Dict[str, Dict]):
   transformations = args.transformations
   if args.operation is not None:
+    print('Warning: --operation is deprecated; use --transformations instead.', file=sys.stderr)
     transformations = [args.operation]
+
+  try:
+    transformer_path = utl.ensure_transformer(args.transformer_path, force_rebuild=args.update)
+    converter_path = None
+    if _requests_binary_output(transformations):
+      converter_path = utl.ensure_converter(args.converter_path, force_rebuild=args.update)
+  except Exception as exc:
+    raise utl.TransformError(str(exc)) from exc
 
   to_transform = _selected_graphs(args, graphs)
 
@@ -158,7 +170,14 @@ def transform_command(args: argparse.Namespace, graphs: Dict[str, Dict]):
     folder = info['folder']
     if args.destination:
       folder = os.path.join(args.destination, name)
-    utl.transform_graph(transformer_path, folder, transformations, args.always)
+    utl.transform_graph(
+        transformer_path,
+        folder,
+        transformations,
+        args.always,
+        converter_path=converter_path,
+        keep_transformed=not args.discard_transformed,
+    )
 
   _run_graph_operation(args, graphs, 'transform', to_transform, _transform)
 
@@ -237,11 +256,13 @@ def main() -> int:
   transform_parser = subparsers.add_parser('transform', help='Transform a graph', description='Transform a graph Matrix Market file with a transformation pipeline')
   transform_parser.set_defaults(func=transform_command)
   transform_parser.add_argument('--transformer-path', default=utl.DEFAULT_TRANSFORMER_PATH, help=f'Path to transformer executable (default: {utl.DEFAULT_TRANSFORMER_PATH})')
-  transform_parser.add_argument('-t', '--transformations', nargs='+', default=['symmetrize', 'sort'], metavar='TRANSFORM', help='Ordered transformation pipeline (default: symmetrize sort)')
-  transform_parser.add_argument('-o', '--operation', choices=['sort', 'symmetrize', 'both'], help='Backward-compatible single transformation alias (overrides --transformations)')
+  transform_parser.add_argument('--converter-path', default=utl.DEFAULT_CONVERTER_PATH, help=f'Path to converter executable used by the binary stage (default: {utl.DEFAULT_CONVERTER_PATH})')
+  transform_parser.add_argument('-t', '--transformations', nargs='+', default=['symmetrize', 'sort'], metavar='TRANSFORM', help='Ordered transformation pipeline (available: symmetrize sort binary; default: symmetrize sort)')
+  transform_parser.add_argument('-o', '--operation', choices=['sort', 'symmetrize', 'both'], help='Deprecated single-transformation alias (overrides --transformations)')
   transform_parser.add_argument('-a', '--all', action='store_true', help='Transform all graphs')
-  transform_parser.add_argument('--update', action='store_true', help='Force rebuilding the default transformer before transformation')
+  transform_parser.add_argument('--update', action='store_true', help='Force rebuilding the default transformer and, if needed, converter before transformation')
   transform_parser.add_argument('-y', '--always', action='store_true', help='Always transform the graph')
+  transform_parser.add_argument('--discard-transformed', action='store_true', help='Discard the intermediate .transformed.mtx after successful binary conversion')
   transform_parser.add_argument('-d', '--destination', help='Destination folder')
   transform_parser.add_argument('graph', nargs='*', help='graph(s) to transform', metavar='GRAPH')
 
